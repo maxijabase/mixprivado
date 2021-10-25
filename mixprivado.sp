@@ -1,5 +1,7 @@
-#include <sourcemod>
+#include <autoexecconfig>
 #include <sdktools>
+#include <smset>
+#include <sourcemod>
 
 #pragma semicolon 1
 #pragma newdecls required
@@ -16,11 +18,16 @@ public Plugin myinfo =
 	url = "https://github.com/maxijabase"
 };
 
+ConVar g_cvEnabled;
 char g_cConfigFile[PLATFORM_MAX_PATH];
-StringMap g_smPlayers;
+StringSet g_ssPlayers;
 
-public void OnPluginStart()
-{
+public void OnPluginStart() {
+	
+	AutoExecConfig_SetCreateFile(true);
+	AutoExecConfig_SetFile("MixPrivado");
+	
+	g_cvEnabled = AutoExecConfig_CreateConVar("sm_mp_enable", "1", "Activar Mix Privado");
 	RegConsoleCmd("sm_testlist", CMD_Testlist);
 	
 	RegAdminCmd("sm_mp_reload", CMD_Reload, ADMFLAG_GENERIC, "Reload whitelist.");
@@ -28,12 +35,15 @@ public void OnPluginStart()
 	
 	CacheUsers();
 	
+	AutoExecConfig_ExecuteFile();
+	AutoExecConfig_CleanFile();
+	
 }
 
 void CacheUsers(int userid = -1) {
 	
 	if (userid != -1) {
-		PrintToChat(GetClientOfUserId(userid), "%s Reloading whitelist...", PREFIX);
+		ReplyToCommand(GetClientOfUserId(userid), "%s Reloading whitelist...", PREFIX);
 	}
 	
 	BuildPath(Path_SM, g_cConfigFile, sizeof(g_cConfigFile), "configs/MixPrivadoWhitelist.cfg");
@@ -52,9 +62,11 @@ void CacheUsers(int userid = -1) {
 		file.WriteLine("");
 		
 		delete file;
+		
 		if (userid != -1) {
-			PrintToChat(GetClientOfUserId(userid), "%s Whitelist was not present, created.", PREFIX);
+			ReplyToCommand(GetClientOfUserId(userid), "%s Whitelist was not present, created.", PREFIX);
 		}
+		
 		return;
 		
 	}
@@ -67,7 +79,7 @@ void CacheUsers(int userid = -1) {
 	
 	char readBuffer[128];
 	int len;
-	g_smPlayers = new ArrayList(ByteCountToCells(32));
+	g_ssPlayers = new StringSet();
 	
 	while (!file.EndOfFile() && file.ReadLine(readBuffer, sizeof(readBuffer))) {
 		
@@ -92,39 +104,64 @@ void CacheUsers(int userid = -1) {
 			
 		}
 		
-		g_smPlayers.(readBuffer);
+		g_ssPlayers.Insert(readBuffer);
 		
 	}
 	
 	if (userid != -1) {
-		PrintToChat(GetClientOfUserId(userid), "%s Whitelist reloaded.", PREFIX);
+		ReplyToCommand(GetClientOfUserId(userid), "%s Whitelist reloaded.", PREFIX);
 	}
 	
 	delete file;
 	
 }
 
+/* Forwards */
+
 public void OnClientAuthorized(int client, const char[] auth) {
 	
+	if (!g_cvEnabled.BoolValue) {
+		
+		return;
+		
+	}
+	
+	char steamid[18];
+	GetClientAuthId(client, AuthId_SteamID64, steamid, sizeof(steamid));
+	
+	if (!g_ssPlayers.Find(steamid)) {
+		
+		KickClient(client, "No estás en la whitelist de mix privado.");
+		
+	}
 	
 }
 
+/* Commands */
+
 public Action CMD_Reload(int client, int args) {
 	
-	CacheUsers(GetClientUserId(client));
+	CacheUsers(client == 0 ? -1 : GetClientUserId(client));
 	return Plugin_Handled;
 	
 }
 
 public Action CMD_Add(int client, int args) {
+	
 	return Plugin_Handled;
+	
 }
 
 public Action CMD_Testlist(int client, int args) {
-	char buffer[32];
-	for (int i = 0; i < g_smPlayers.Length; i++) {
-		g_smPlayers.GetString(i, buffer, sizeof(buffer));
-		PrintToChat(client, buffer);
+	
+	StringSetIterator siter = g_ssPlayers.Iterator();
+	while (siter.Next())
+	{
+		char buffer2[32];
+		siter.Get(buffer2, sizeof(buffer2));
+		ReplyToCommand(client, "%s", buffer2);
 	}
+	
+	delete siter;
 	
 }
