@@ -17,15 +17,24 @@ public Plugin myinfo =
 };
 
 char g_cConfigFile[PLATFORM_MAX_PATH];
-ArrayList g_alPlayers;
+StringMap g_smPlayers;
 
 public void OnPluginStart()
 {
-	CacheUsers();
 	RegConsoleCmd("sm_testlist", CMD_Testlist);
+	
+	RegAdminCmd("sm_mp_reload", CMD_Reload, ADMFLAG_GENERIC, "Reload whitelist.");
+	RegAdminCmd("sm_mp_add", CMD_Add, ADMFLAG_GENERIC, "Add an ID to whitelist.");
+	
+	CacheUsers();
+	
 }
 
-void CacheUsers() {
+void CacheUsers(int userid = -1) {
+	
+	if (userid != -1) {
+		PrintToChat(GetClientOfUserId(userid), "%s Reloading whitelist...", PREFIX);
+	}
 	
 	BuildPath(Path_SM, g_cConfigFile, sizeof(g_cConfigFile), "configs/MixPrivadoWhitelist.cfg");
 	
@@ -43,6 +52,9 @@ void CacheUsers() {
 		file.WriteLine("");
 		
 		delete file;
+		if (userid != -1) {
+			PrintToChat(GetClientOfUserId(userid), "%s Whitelist was not present, created.", PREFIX);
+		}
 		return;
 		
 	}
@@ -50,18 +62,16 @@ void CacheUsers() {
 	File file = OpenFile(g_cConfigFile, "r");
 	
 	if (!file) {
-		
 		SetFailState("%s Error while attempting to parse the config file!", PREFIX);
-		
 	}
 	
 	char readBuffer[128];
 	int len;
-	g_alPlayers = new ArrayList(ByteCountToCells(32));
+	g_smPlayers = new ArrayList(ByteCountToCells(32));
 	
 	while (!file.EndOfFile() && file.ReadLine(readBuffer, sizeof(readBuffer))) {
 		
-		if (readBuffer[0] == '/' || IsCharSpace(readBuffer[0])) {
+		if (readBuffer[0] == '/' || readBuffer[0] == ' ') {
 			
 			continue;
 			
@@ -82,18 +92,38 @@ void CacheUsers() {
 			
 		}
 		
-		g_alPlayers.PushString(readBuffer);
+		g_smPlayers.(readBuffer);
 		
+	}
+	
+	if (userid != -1) {
+		PrintToChat(GetClientOfUserId(userid), "%s Whitelist reloaded.", PREFIX);
 	}
 	
 	delete file;
 	
 }
 
+public void OnClientAuthorized(int client, const char[] auth) {
+	
+	
+}
+
+public Action CMD_Reload(int client, int args) {
+	
+	CacheUsers(GetClientUserId(client));
+	return Plugin_Handled;
+	
+}
+
+public Action CMD_Add(int client, int args) {
+	return Plugin_Handled;
+}
+
 public Action CMD_Testlist(int client, int args) {
 	char buffer[32];
-	for(int i = 0; i < g_alPlayers.Length; i++) {
-		g_alPlayers.GetString(i, buffer, sizeof(buffer));
+	for (int i = 0; i < g_smPlayers.Length; i++) {
+		g_smPlayers.GetString(i, buffer, sizeof(buffer));
 		PrintToChat(client, buffer);
 	}
 	
