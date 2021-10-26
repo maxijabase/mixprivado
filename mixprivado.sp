@@ -2,6 +2,7 @@
 #include <sdktools>
 #include <smset>
 #include <sourcemod>
+#include <regex>
 
 #pragma semicolon 1
 #pragma newdecls required
@@ -9,8 +10,7 @@
 #define PLUGIN_VERSION "1.0"
 #define PREFIX "[MixPrivado]"
 
-public Plugin myinfo = 
-{
+public Plugin myinfo = {
 	name = "[TF2] Mix Privado", 
 	author = "ampere", 
 	description = "Whitelist para usar en mixes privados", 
@@ -22,16 +22,18 @@ ConVar g_cvEnabled;
 char g_cConfigFile[PLATFORM_MAX_PATH];
 StringSet g_ssPlayers;
 
+/* Forwards */
+
 public void OnPluginStart() {
 	
 	AutoExecConfig_SetCreateFile(true);
 	AutoExecConfig_SetFile("MixPrivado");
 	
 	g_cvEnabled = AutoExecConfig_CreateConVar("sm_mp_enable", "1", "Activar Mix Privado");
-	RegConsoleCmd("sm_testlist", CMD_Testlist);
 	
-	RegAdminCmd("sm_mp_reload", CMD_Reload, ADMFLAG_GENERIC, "Reload whitelist.");
-	RegAdminCmd("sm_mp_add", CMD_Add, ADMFLAG_GENERIC, "Add an ID to whitelist.");
+	RegAdminCmd("sm_mp_list", CMD_List, ADMFLAG_GENERIC, "Ver la whitelist.");
+	RegAdminCmd("sm_mp_reload", CMD_Reload, ADMFLAG_GENERIC, "Recargar whitelist.");
+	RegAdminCmd("sm_mp_add", CMD_Add, ADMFLAG_GENERIC, "Agregar una Steam ID a la whitelist.");
 	
 	CacheUsers();
 	
@@ -40,10 +42,82 @@ public void OnPluginStart() {
 	
 }
 
+public void OnClientAuthorized(int client, const char[] auth) {
+	
+	if (!g_cvEnabled.BoolValue) {
+		
+		return;
+		
+	}
+	
+	char steamid[18];
+	GetClientAuthId(client, AuthId_SteamID64, steamid, sizeof(steamid));
+	
+	if (!g_ssPlayers.Find(steamid)) {
+		
+		KickClient(client, "No estás en la whitelist de mix privado.");
+		
+	}
+	
+}
+
+/* Commands */
+
+public Action CMD_Reload(int client, int args) {
+	
+	CacheUsers(client == 0 ? -1 : GetClientUserId(client));
+	return Plugin_Handled;
+	
+}
+
+public Action CMD_Add(int client, int args) {
+	
+	if (args != 1) {
+		
+		ReplyToCommand(client, "%s Uso: sm_mp_add <STEAMID64>", PREFIX);
+		return Plugin_Handled;
+		
+	}
+	
+	char arg[32];
+	GetCmdArg(1, arg, sizeof(arg));
+	
+	if (!SimpleRegexMatch(arg, "^7656119[0-9]{10}$")) {
+		
+		ReplyToCommand(client, "%s Steam ID inválido.", PREFIX);
+		return Plugin_Handled;
+	}
+	
+	AddUser(arg, client);
+	return Plugin_Handled;
+	
+}
+
+public Action CMD_List(int client, int args) {
+	
+	if (g_ssPlayers.Size == 0) {
+		ReplyToCommand(client, "%s La whitelist está vacía", PREFIX);
+		return Plugin_Handled;
+	}
+	
+	StringSetIterator siter = g_ssPlayers.Iterator();
+	while (siter.Next())
+	{
+		char buffer[32];
+		siter.Get(buffer, sizeof(buffer));
+		ReplyToCommand(client, "%s", buffer);
+	}
+	
+	delete siter;
+	return Plugin_Handled;
+}
+
+/* Methods */
+
 void CacheUsers(int userid = -1) {
 	
 	if (userid != -1) {
-		ReplyToCommand(GetClientOfUserId(userid), "%s Reloading whitelist...", PREFIX);
+		ReplyToCommand(GetClientOfUserId(userid), "%s Recargando whitelist...", PREFIX);
 	}
 	
 	BuildPath(Path_SM, g_cConfigFile, sizeof(g_cConfigFile), "configs/MixPrivadoWhitelist.cfg");
@@ -54,7 +128,7 @@ void CacheUsers(int userid = -1) {
 		
 		if (!file) {
 			
-			SetFailState("%s Error while trying to make the whitelist file!", PREFIX);
+			SetFailState("%s Error al intentar crear la whitelist.", PREFIX);
 			
 		}
 		
@@ -64,7 +138,7 @@ void CacheUsers(int userid = -1) {
 		delete file;
 		
 		if (userid != -1) {
-			ReplyToCommand(GetClientOfUserId(userid), "%s Whitelist was not present, created.", PREFIX);
+			ReplyToCommand(GetClientOfUserId(userid), "%s La whitelist no existía y se creó.", PREFIX);
 		}
 		
 		return;
@@ -74,7 +148,7 @@ void CacheUsers(int userid = -1) {
 	File file = OpenFile(g_cConfigFile, "r");
 	
 	if (!file) {
-		SetFailState("%s Error while attempting to parse the config file!", PREFIX);
+		SetFailState("%s Error al procesar la whitelist.", PREFIX);
 	}
 	
 	char readBuffer[128];
@@ -109,59 +183,31 @@ void CacheUsers(int userid = -1) {
 	}
 	
 	if (userid != -1) {
-		ReplyToCommand(GetClientOfUserId(userid), "%s Whitelist reloaded.", PREFIX);
+		ReplyToCommand(GetClientOfUserId(userid), "%s Whitelist recargada.", PREFIX);
 	}
 	
 	delete file;
 	
 }
 
-/* Forwards */
-
-public void OnClientAuthorized(int client, const char[] auth) {
+void AddUser(const char[] steamid, int client) {
 	
-	if (!g_cvEnabled.BoolValue) {
+	File file = OpenFile(g_cConfigFile, "a");
+	
+	if (!file) {
 		
+		ReplyToCommand(client, "%s Error al abrir el archivo para agregar usuario.", PREFIX);
+		delete file;
 		return;
 		
 	}
 	
-	char steamid[18];
-	GetClientAuthId(client, AuthId_SteamID64, steamid, sizeof(steamid));
+	file.WriteLine(steamid, true);
+	g_ssPlayers.Insert(steamid);
 	
-	if (!g_ssPlayers.Find(steamid)) {
-		
-		KickClient(client, "No estás en la whitelist de mix privado.");
-		
-	}
+	ReplyToCommand(client, "%s %s agregado.", PREFIX, steamid);
 	
-}
-
-/* Commands */
-
-public Action CMD_Reload(int client, int args) {
+	delete file;
+	return;
 	
-	CacheUsers(client == 0 ? -1 : GetClientUserId(client));
-	return Plugin_Handled;
-	
-}
-
-public Action CMD_Add(int client, int args) {
-	
-	return Plugin_Handled;
-	
-}
-
-public Action CMD_Testlist(int client, int args) {
-	
-	StringSetIterator siter = g_ssPlayers.Iterator();
-	while (siter.Next())
-	{
-		char buffer2[32];
-		siter.Get(buffer2, sizeof(buffer2));
-		ReplyToCommand(client, "%s", buffer2);
-	}
-	
-	delete siter;
-	
-}
+} 
