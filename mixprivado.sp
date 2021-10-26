@@ -153,7 +153,17 @@ void CacheUsers(int userid = -1) {
 	
 	char readBuffer[128];
 	int len;
-	g_ssPlayers = new StringSet();
+	if (userid == -1) {
+		
+		g_ssPlayers = new StringSet();
+		
+	}
+	else {
+		
+		g_ssPlayers.Clear();
+		
+	}
+	
 	
 	while (!file.EndOfFile() && file.ReadLine(readBuffer, sizeof(readBuffer))) {
 		
