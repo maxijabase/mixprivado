@@ -1,8 +1,6 @@
 #include <autoexecconfig>
-#include <sdktools>
-#include <smset>
-#include <sourcemod>
 #include <regex>
+#include <sourcemod>
 
 #pragma semicolon 1
 #pragma newdecls required
@@ -20,7 +18,7 @@ public Plugin myinfo = {
 
 ConVar g_cvEnabled;
 char g_cConfigFile[PLATFORM_MAX_PATH];
-StringSet g_ssPlayers;
+ArrayList g_alPlayers;
 
 /* Forwards */
 
@@ -53,7 +51,7 @@ public void OnClientAuthorized(int client, const char[] auth) {
 	char steamid[18];
 	GetClientAuthId(client, AuthId_SteamID64, steamid, sizeof(steamid));
 	
-	if (!g_ssPlayers.Find(steamid)) {
+	if (g_alPlayers.FindString(steamid) == -1) {
 		
 		KickClient(client, "No estás en la whitelist de mix privado.");
 		
@@ -95,20 +93,19 @@ public Action CMD_Add(int client, int args) {
 
 public Action CMD_List(int client, int args) {
 	
-	if (g_ssPlayers.Size == 0) {
+	int alLength = g_alPlayers.Length;
+	
+	if (alLength == 0) {
 		ReplyToCommand(client, "%s La whitelist está vacía", PREFIX);
 		return Plugin_Handled;
 	}
 	
-	StringSetIterator siter = g_ssPlayers.Iterator();
-	while (siter.Next())
-	{
-		char buffer[32];
-		siter.Get(buffer, sizeof(buffer));
+	for (int i = 0; i < alLength; i++) {
+		char buffer[64];
+		g_alPlayers.GetString(i, buffer, sizeof(buffer));
 		ReplyToCommand(client, "%s", buffer);
 	}
 	
-	delete siter;
 	return Plugin_Handled;
 }
 
@@ -153,14 +150,16 @@ void CacheUsers(int userid = -1) {
 	
 	char readBuffer[128];
 	int len;
+	
 	if (userid == -1) {
 		
-		g_ssPlayers = new StringSet();
+		g_alPlayers = new ArrayList();
 		
 	}
+	
 	else {
 		
-		g_ssPlayers.Clear();
+		g_alPlayers.Clear();
 		
 	}
 	
@@ -188,7 +187,8 @@ void CacheUsers(int userid = -1) {
 			
 		}
 		
-		g_ssPlayers.Insert(readBuffer);
+		PrintToServer("adding %s", readBuffer);
+		g_alPlayers.PushString(readBuffer);
 		
 	}
 	
@@ -213,7 +213,7 @@ void AddUser(const char[] steamid, int client) {
 	}
 	
 	file.WriteLine(steamid, true);
-	g_ssPlayers.Insert(steamid);
+	g_alPlayers.PushString(steamid);
 	
 	ReplyToCommand(client, "%s %s agregado.", PREFIX, steamid);
 	
